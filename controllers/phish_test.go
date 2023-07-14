@@ -126,6 +126,34 @@ func clickLink404(t *testing.T, ctx *testContext, rid string) {
 	}
 }
 
+func scanQrcode(t *testing.T, ctx *testContext, rid string, expectedHTML string) {
+	resp, err := http.Get(fmt.Sprintf("%s/qrcode?%s=%s", ctx.phishServer.URL, models.RecipientParameter, rid))
+	if err != nil {
+		t.Fatalf("error requesting / endpoint: %v", err)
+	}
+	defer resp.Body.Close()
+	got, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("error reading payload from / endpoint response: %v", err)
+	}
+	if !bytes.Equal(got, []byte(expectedHTML)) {
+		t.Fatalf("invalid response received from / endpoint. expected %s got %s", got, expectedHTML)
+	}
+}
+
+func scanQrcode404(t *testing.T, ctx *testContext, rid string) {
+	resp, err := http.Get(fmt.Sprintf("%s/qrcode?%s=%s", ctx.phishServer.URL, models.RecipientParameter, rid))
+	if err != nil {
+		t.Fatalf("error requesting / endpoint: %v", err)
+	}
+	defer resp.Body.Close()
+	got := resp.StatusCode
+	expected := http.StatusNotFound
+	if got != expected {
+		t.Fatalf("invalid status code received for / endpoint. expected %d got %d", expected, got)
+	}
+}
+
 func transparencyRequest(t *testing.T, ctx *testContext, r models.Result, rid, path string) {
 	resp, err := http.Get(fmt.Sprintf("%s%s?%s=%s", ctx.phishServer.URL, path, models.RecipientParameter, rid))
 	if err != nil {
@@ -229,6 +257,32 @@ func TestClickedPhishingLinkAfterOpen(t *testing.T) {
 	}
 }
 
+func TestScanedPhishingQrcodeAfterOpen(t *testing.T) {
+	ctx := setupTest(t)
+	defer tearDown(t, ctx)
+	campaign := getFirstCampaign(t)
+	result := campaign.Results[0]
+	if result.Status != models.StatusSending {
+		t.Fatalf("unexpected result status received. expected %s got %s", models.StatusSending, result.Status)
+	}
+
+	openEmail(t, ctx, result.RId)
+	scanQrcode(t, ctx, result.RId, campaign.Page.HTML)
+
+	campaign = getFirstCampaign(t)
+	result = campaign.Results[0]
+	lastEvent := campaign.Events[len(campaign.Events)-1]
+	if result.Status != models.EventScanned {
+		t.Fatalf("unexpected result status received. expected %s got %s", models.EventScanned, result.Status)
+	}
+	if lastEvent.Message != models.EventScanned {
+		t.Fatalf("unexpected event status received. expected %s got %s", lastEvent.Message, models.EventScanned)
+	}
+	if result.ModifiedDate != lastEvent.Time {
+		t.Fatalf("unexpected result modified date received. expected %s got %s", lastEvent.Time, result.ModifiedDate)
+	}
+}
+
 func TestNoRecipientID(t *testing.T) {
 	ctx := setupTest(t)
 	defer tearDown(t, ctx)
@@ -258,6 +312,7 @@ func TestInvalidRecipientID(t *testing.T) {
 	rid := "XXXXXXXXXX"
 	openEmail404(t, ctx, rid)
 	clickLink404(t, ctx, rid)
+	scanQrcode404(t, ctx, rid)
 	reportEmail404(t, ctx, rid)
 }
 

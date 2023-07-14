@@ -230,6 +230,7 @@ func (ps *PhishingServer) PhishHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	rs := ctx.Get(r, "result").(models.Result)
 	rid := ctx.Get(r, "rid").(string)
+	path := ctx.Get(r, "path").(string)
 	c := ctx.Get(r, "campaign").(models.Campaign)
 	d := ctx.Get(r, "details").(models.EventDetails)
 
@@ -247,9 +248,16 @@ func (ps *PhishingServer) PhishHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case r.Method == "GET":
-		err = rs.HandleClickedLink(d)
-		if err != nil {
-			log.Error(err)
+		if path == "/qrcode" {
+			err = rs.HandleScanedQrcode(d)
+			if err != nil {
+				log.Error(err)
+			}
+		} else {
+			err = rs.HandleClickedLink(d)
+			if err != nil {
+				log.Error(err)
+			}
 		}
 	case r.Method == "POST":
 		err = rs.HandleFormSubmit(d)
@@ -318,6 +326,7 @@ func setupContext(r *http.Request) (*http.Request, error) {
 		log.Error(err)
 		return r, err
 	}
+	urlPath := r.URL.Path
 	rid := r.Form.Get(models.RecipientParameter)
 	if rid == "" {
 		return r, ErrInvalidRequest
@@ -375,6 +384,7 @@ func setupContext(r *http.Request) (*http.Request, error) {
 	d.Browser["user-agent"] = r.Header.Get("User-Agent")
 
 	r = ctx.Set(r, "rid", rid)
+	r = ctx.Set(r, "path", urlPath)
 	r = ctx.Set(r, "result", rs)
 	r = ctx.Set(r, "campaign", c)
 	r = ctx.Set(r, "details", d)

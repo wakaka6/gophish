@@ -2,10 +2,13 @@ package models
 
 import (
 	"bytes"
+	"encoding/base64"
 	"net/mail"
 	"net/url"
 	"path"
 	"text/template"
+
+	qrcode "github.com/skip2/go-qrcode"
 )
 
 // TemplateContext is an interface that allows both campaigns and email
@@ -24,6 +27,9 @@ type PhishingTemplateContext struct {
 	TrackingURL string
 	RId         string
 	BaseURL     string
+	BaseQrcode  string
+	QrcodeURL   string
+	Qrcode      string
 	BaseRecipient
 }
 
@@ -61,12 +67,21 @@ func NewPhishingTemplateContext(ctx TemplateContext, r BaseRecipient, rid string
 	trackingURL.Path = path.Join(trackingURL.Path, "/track")
 	trackingURL.RawQuery = q.Encode()
 
+	qrcodeURL, err := url.Parse(templateURL)
+	qrcodeURL.Path = path.Join(qrcodeURL.Path, "/qrcode")
+	qrcodeURL.RawQuery = q.Encode()
+
+	qrcodeImg, _ := GenerateQrcode(qrcodeURL.String())
+
 	return PhishingTemplateContext{
 		BaseRecipient: r,
 		BaseURL:       baseURL.String(),
 		URL:           phishURL.String(),
 		TrackingURL:   trackingURL.String(),
+		QrcodeURL:     qrcodeURL.String(),
 		Tracker:       "<img alt='' style='display: none' src='" + trackingURL.String() + "'/>",
+		BaseQrcode:    "data:image/png;base64," + qrcodeImg,
+		Qrcode:        "<img alt='' style='border: 5px solid #fff;' src='data:image/png;base64," + qrcodeImg + "'/>",
 		From:          fn,
 		RId:           rid,
 	}, nil
@@ -82,6 +97,24 @@ func ExecuteTemplate(text string, data interface{}) (string, error) {
 	}
 	err = tmpl.Execute(&buff, data)
 	return buff.String(), err
+}
+
+// genreatae a qrcode image and return base64 encoded string
+func GenerateQrcode(text string) (string, error) {
+	var qr *qrcode.QRCode
+	qr, err := qrcode.New(text, qrcode.Highest)
+	if err != nil {
+		return "", err
+	}
+	qr.DisableBorder = true
+	var qrsz int = QrcodeSize
+	png, err := qr.PNG(qrsz)
+	if err != nil {
+		return "", err
+	}
+	// png base64 encoded
+	qrcodeImg := base64.StdEncoding.EncodeToString(png)
+	return qrcodeImg, nil
 }
 
 // ValidationContext is used for validating templates and pages

@@ -97,8 +97,9 @@ func (r *Result) HandleEmailOpened(details EventDetails) error {
 		return err
 	}
 	// Don't update the status if the user already clicked the link
+	// or scanned the QR code
 	// or submitted data to the campaign
-	if r.Status == EventClicked || r.Status == EventDataSubmit {
+	if r.Status == EventClicked || r.Status == EventScanned || r.Status == EventDataSubmit {
 		return nil
 	}
 	r.Status = EventOpened
@@ -113,12 +114,29 @@ func (r *Result) HandleClickedLink(details EventDetails) error {
 	if err != nil {
 		return err
 	}
-	// Don't update the status if the user has already submitted data via the
-	// landing page form.
-	if r.Status == EventDataSubmit {
+	// Don't update the status if the user has already scanned the QR code
+	// or submitted data via the landing page form.
+	if r.Status == EventScanned || r.Status == EventDataSubmit {
 		return nil
 	}
 	r.Status = EventClicked
+	r.ModifiedDate = event.Time
+	return db.Save(r).Error
+}
+
+// HandleClickedLink updates a Result in the case where the recipient clicked
+// the link in an email.
+func (r *Result) HandleScanedQrcode(details EventDetails) error {
+	event, err := r.createEvent(EventScanned, details)
+	if err != nil {
+		return err
+	}
+	// Don't update the status if the user has already clicked the link
+	// or submitted data via the landing page form.
+	if r.Status == EventClicked || r.Status == EventDataSubmit {
+		return nil
+	}
+	r.Status = EventScanned
 	r.ModifiedDate = event.Time
 	return db.Save(r).Error
 }
