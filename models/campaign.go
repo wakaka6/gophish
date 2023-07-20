@@ -66,6 +66,7 @@ type CampaignStats struct {
 	EmailsSent    int64 `json:"sent"`
 	OpenedEmail   int64 `json:"opened"`
 	ClickedLink   int64 `json:"clicked"`
+	ScannedQrCode int64 `json:"scanned"`
 	SubmittedData int64 `json:"submitted_data"`
 	EmailReported int64 `json:"email_reported"`
 	Error         int64 `json:"error"`
@@ -282,6 +283,12 @@ func getCampaignStats(cid int64) (CampaignStats, error) {
 	if err != nil {
 		return s, err
 	}
+
+	query.Where("status=?", EventScanned).Count(&s.ScannedQrCode)
+	if err != nil {
+		return s, err
+	}
+
 	query.Where("reported=?", true).Count(&s.EmailReported)
 	if err != nil {
 		return s, err
@@ -294,6 +301,9 @@ func getCampaignStats(cid int64) (CampaignStats, error) {
 	}
 	// Every clicked link event implies they opened the email
 	s.OpenedEmail += s.ClickedLink
+	// Every scanned qr code event implies they opened the email
+	s.OpenedEmail += s.ScannedQrCode
+
 	err = query.Where("status=?", EventSent).Count(&s.EmailsSent).Error
 	if err != nil {
 		return s, err
