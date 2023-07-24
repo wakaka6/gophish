@@ -13,7 +13,10 @@ import (
 )
 
 // MaxReconnectAttempts is the maximum number of times we should reconnect to a server
-var MaxReconnectAttempts = 10
+var MaxReconnectAttempts = 5
+
+// MaxMailWorkers is the maximum number of mail workers to run
+var MaxMailWorkers = 35
 
 // ErrMaxConnectAttempts is thrown when the maximum number of reconnect attempts
 // is reached.
@@ -141,12 +144,21 @@ func dialHost(ctx context.Context, dialer Dialer) (Sender, error) {
 // sendMail just returns and does not modify those emails.
 func sendMail(ctx context.Context, dialer Dialer, ms []Mail) {
 	wg := sync.WaitGroup{}
-	workers := 20
+	workers := MaxMailWorkers
 	mailChan := make(chan Mail, len(ms))
-	errorChan := make(chan error, 1)
+	var unknowerror error
+	once := sync.Once{}
+	ctx, cancel := context.WithCancel(ctx)
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					log.WithFields(logrus.Fields{
+						"err": r,
+					}).Error("Recovered from panic in mail worker")
+				}
+			}()
 			defer wg.Done()
 			sender, err := dialHost(ctx, dialer)
 			if err != nil {
@@ -159,11 +171,10 @@ func sendMail(ctx context.Context, dialer Dialer, ms []Mail) {
 			for m := range mailChan {
 				select {
 				case <-ctx.Done():
-					return
-				case err := <-errorChan:
-					if err != nil {
-						m.Error(err)
+					if unknowerror != nil {
+						m.Error(unknowerror)
 					}
+					return
 				default:
 					break
 				}
@@ -229,7 +240,10 @@ func sendMail(ctx context.Context, dialer Dialer, ms []Mail) {
 						sender, err = dialHost(ctx, dialer)
 						if err != nil {
 							m.Error(err)
-							errorChan <- err
+							once.Do(func() {
+								unknowerror = err
+							})
+							cancel()
 							return
 						}
 						m.Backoff(origErr)
@@ -245,10 +259,7 @@ func sendMail(ctx context.Context, dialer Dialer, ms []Mail) {
 			}
 		}()
 	}
-	go func() {
-		<-ctx.Done()
-		close(errorChan)
-	}()
+
 	for _, m := range ms {
 		select {
 		case <-ctx.Done():
@@ -257,6 +268,7 @@ func sendMail(ctx context.Context, dialer Dialer, ms []Mail) {
 			mailChan <- m
 		}
 	}
-	close(mailChan)
 	wg.Wait()
+	cancel()
+	close(mailChan)
 }
