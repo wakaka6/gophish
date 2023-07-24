@@ -49,7 +49,7 @@ const (
 	EventSendingError  string = "Error Sending Email"
 	EventOpened        string = "Email Opened"
 	EventClicked       string = "Clicked Link"
-	EventScanned       string = "Qrcode Scaned"
+	EventScanned       string = "Qrcode Scanned"
 	EventDataSubmit    string = "Submitted Data"
 	EventReported      string = "Email Reported"
 	EventProxyRequest  string = "Proxied request"
