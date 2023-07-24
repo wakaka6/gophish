@@ -146,7 +146,7 @@ func sendMail(ctx context.Context, dialer Dialer, ms []Mail) {
 	wg := sync.WaitGroup{}
 	workers := MaxMailWorkers
 	mailChan := make(chan Mail, len(ms))
-	var unknowerror error
+	var unknowError error
 	once := sync.Once{}
 	ctx, cancel := context.WithCancel(ctx)
 	for i := 0; i < workers; i++ {
@@ -171,8 +171,8 @@ func sendMail(ctx context.Context, dialer Dialer, ms []Mail) {
 			for m := range mailChan {
 				select {
 				case <-ctx.Done():
-					if unknowerror != nil {
-						m.Error(unknowerror)
+					if unknowError != nil {
+						m.Error(unknowError)
 					}
 					return
 				default:
@@ -241,7 +241,7 @@ func sendMail(ctx context.Context, dialer Dialer, ms []Mail) {
 						if err != nil {
 							m.Error(err)
 							once.Do(func() {
-								unknowerror = err
+								unknowError = err
 							})
 							cancel()
 							return
@@ -260,12 +260,15 @@ func sendMail(ctx context.Context, dialer Dialer, ms []Mail) {
 		}()
 	}
 
+	sendMailCount := 0
 	for _, m := range ms {
 		select {
 		case <-ctx.Done():
+			errorMail(unknowError, ms[sendMailCount:])
 			break
 		default:
 			mailChan <- m
+			sendMailCount++
 		}
 	}
 	wg.Wait()
