@@ -159,6 +159,8 @@ func sendMail(ctx context.Context, dialer Dialer, ms []Mail) {
 	var unknowError error
 	once := sync.Once{}
 
+	log.Info(fmt.Sprintf("Start mail pool: %v", workers))
+
 	ctx, cancel := context.WithCancel(ctx)
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
