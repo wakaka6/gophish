@@ -86,6 +86,7 @@ func (mw *MailWorker) Start(ctx context.Context) {
 			return
 		case ms := <-mw.queue:
 			go func(ctx context.Context, ms []Mail) {
+				// because only one smtp config on time's campaign, get dialer of first maillog.
 				dialer, err := ms[0].GetDialer()
 				if err != nil {
 					errorMail(err, ms)
@@ -144,10 +145,20 @@ func dialHost(ctx context.Context, dialer Dialer) (Sender, error) {
 // sendMail just returns and does not modify those emails.
 func sendMail(ctx context.Context, dialer Dialer, ms []Mail) {
 	wg := sync.WaitGroup{}
-	workers := MaxMailWorkers
-	mailChan := make(chan Mail, len(ms))
+
+	// 控制并发量, 发送邮件的并发量
+	currentMailCount := len(ms)
+	workers := 1
+	if currentMailCount > MaxMailWorkers {
+		workers = MaxMailWorkers
+	} else {
+		workers = currentMailCount
+	}
+
+	mailChan := make(chan Mail, currentMailCount)
 	var unknowError error
 	once := sync.Once{}
+
 	ctx, cancel := context.WithCancel(ctx)
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
@@ -160,6 +171,8 @@ func sendMail(ctx context.Context, dialer Dialer, ms []Mail) {
 				}
 			}()
 			defer wg.Done()
+
+			// connect test
 			sender, err := dialHost(ctx, dialer)
 			if err != nil {
 				log.Warn(err)
@@ -167,8 +180,12 @@ func sendMail(ctx context.Context, dialer Dialer, ms []Mail) {
 				return
 			}
 			defer sender.Close()
-			message := gomail.NewMessage()
+
+			// 复用sender连接
 			for m := range mailChan {
+
+				// send email
+				message := gomail.NewMessage()
 				select {
 				case <-ctx.Done():
 					if unknowError != nil {

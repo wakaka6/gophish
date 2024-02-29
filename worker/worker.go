@@ -79,6 +79,7 @@ func (w *DefaultWorker) processCampaigns(t time.Time) error {
 		msg[m.CampaignId] = append(msg[m.CampaignId], m)
 	}
 
+	// TODO: 修改这里为更细的并发颗粒度，目前根据多个演练进行并发
 	// Next, we process each group of maillogs in parallel
 	for cid, msc := range msg {
 		go func(cid int64, msc []mailer.Mail) {
